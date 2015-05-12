@@ -1,5 +1,5 @@
 {-
-Copyright (C) 2006-2014 John MacFarlane <jgm@berkeley.edu>
+Copyright (C) 2006-2015 John MacFarlane <jgm@berkeley.edu>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -22,7 +22,10 @@ import Distribution.PackageDescription (PackageDescription(..), Executable(..))
 import System.Process ( rawSystem )
 import System.FilePath ( (</>) )
 import System.Directory ( findExecutable )
-import Distribution.Simple.Utils (info)
+import Distribution.Simple.Utils (info, rawSystemExit)
+import Distribution.Simple.Setup
+import Distribution.Simple.LocalBuildInfo
+import Distribution.Verbosity
 
 main :: IO ()
 main = defaultMainWithHooks $ simpleUserHooks {
@@ -30,12 +33,17 @@ main = defaultMainWithHooks $ simpleUserHooks {
       hookedPreProcessors = [ppBlobSuffixHandler]
       -- ensure that make-pandoc-man-pages doesn't get installed to bindir
     , copyHook = \pkgdescr ->
-         (copyHook simpleUserHooks) pkgdescr{ executables =
-            [x | x <- executables pkgdescr, exeName x /= "make-pandoc-man-pages"] }
+         copyHook simpleUserHooks pkgdescr{ executables =
+            [x | x <- executables pkgdescr, exeName x `notElem` noInstall] }
     , instHook = \pkgdescr ->
-         (instHook simpleUserHooks) pkgdescr{ executables =
-            [x | x <- executables pkgdescr, exeName x /= "make-pandoc-man-pages"] }
+         instHook simpleUserHooks pkgdescr{ executables =
+            [x | x <- executables pkgdescr, exeName x `notElem` noInstall] }
+    , postBuild = \args bf pkgdescr lbi -> do
+            makeManPages args bf pkgdescr lbi
+            makeReferenceFiles args bf pkgdescr lbi
     }
+  where
+    noInstall = ["make-pandoc-man-pages","make-reference-files"]
 
 ppBlobSuffixHandler :: PPSuffixHandler
 ppBlobSuffixHandler = ("hsb", \_ _ ->
@@ -49,3 +57,20 @@ ppBlobSuffixHandler = ("hsb", \_ _ ->
             Nothing -> error "hsb2hs is needed to build this program: cabal install hsb2hs"
          return ()
   })
+
+makeManPages :: Args -> BuildFlags -> PackageDescription -> LocalBuildInfo -> IO ()
+makeManPages _ bf _ LocalBuildInfo{buildDir=buildDir}
+  = rawSystemExit verbosity progPath []
+  where
+    verbosity = fromFlagOrDefault normal $ buildVerbosity bf
+    progPath = buildDir </> "make-pandoc-man-pages" </> "make-pandoc-man-pages"
+
+makeReferenceFiles :: Args -> BuildFlags -> PackageDescription -> LocalBuildInfo -> IO ()
+makeReferenceFiles _ bf _ LocalBuildInfo{buildDir=buildDir}
+  = mapM_
+      (rawSystemExit verbosity progPath . return)
+      referenceFormats
+  where
+    verbosity = fromFlagOrDefault normal $ buildVerbosity bf
+    progPath = buildDir </> "make-reference-files" </> "make-reference-files"
+    referenceFormats = ["docx", "odt"]

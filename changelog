@@ -1,3 +1,10 @@
+pandoc (1.13.2.1)
+
+  * Updated to build with ghc 7.10.1.
+
+  * Bumped package upper bounds for filepath, blaze-html,
+    blaze-markup.
+
 pandoc (1.13.2)
 
   * TWiki Reader: add new new twiki reader (API chaneg, Alexander Sulfrian).
@@ -3975,7 +3982,7 @@ pandoc (1.9)
 
     These constructions are now supported now by `rst2latex.py`.
 
-  * Github syntax for fenced code blocks is supported in pandoc's
+  * GitHub syntax for fenced code blocks is supported in pandoc's
     markdown.  You can now write
 
         ```ruby

@@ -1,6 +1,6 @@
 {-# LANGUAGE PatternGuards, CPP, ScopedTypeVariables, ViewPatterns, FlexibleContexts #-}
 {-
-Copyright (C) 2010-2014 John MacFarlane <jgm@berkeley.edu>
+Copyright (C) 2010-2015 John MacFarlane <jgm@berkeley.edu>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 {- |
    Module      : Text.Pandoc.Writers.EPUB
-   Copyright   : Copyright (C) 2010-2014 John MacFarlane
+   Copyright   : Copyright (C) 2010-2015 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -36,6 +36,7 @@ import Data.List ( isPrefixOf, isInfixOf, intercalate )
 import System.Environment ( getEnv )
 import Text.Printf (printf)
 import System.FilePath ( takeExtension, takeFileName )
+import System.FilePath.Glob ( namesMatching )
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as B8
 import qualified Text.Pandoc.UTF8 as UTF8
@@ -56,8 +57,10 @@ import Text.Pandoc.Options ( WriterOptions(..)
                            , ObfuscationMethod(NoObfuscation) )
 import Text.Pandoc.Definition
 import Text.Pandoc.Walk (walk, walkM)
+import Data.Default
+import Text.Pandoc.Writers.Markdown (writePlain)
 import Control.Monad.State (modify, get, execState, State, put, evalState)
-import Control.Monad (foldM, mplus, liftM)
+import Control.Monad (foldM, mplus, liftM, when)
 import Text.XML.Light ( unode, Element(..), unqual, Attr(..), add_attrs
                       , strContent, lookupAttr, Node(..), QName(..), parseXML
                       , onlyElems, node, ppElement)
@@ -225,8 +228,9 @@ addMetadataFromXML _ md = md
 
 metaValueToString :: MetaValue -> String
 metaValueToString (MetaString s) = s
-metaValueToString (MetaInlines ils) = stringify ils
-metaValueToString (MetaBlocks bs) = stringify bs
+metaValueToString (MetaInlines ils) = writePlain def
+                                      (Pandoc nullMeta [Plain ils])
+metaValueToString (MetaBlocks bs) = writePlain def (Pandoc nullMeta bs)
 metaValueToString (MetaBool b) = show b
 metaValueToString _ = ""
 
@@ -387,8 +391,14 @@ writeEPUB opts doc@(Pandoc meta _) = do
   picEntries <- foldM readPicEntry [] pics
 
   -- handle fonts
+  let matchingGlob f = do
+        xs <- namesMatching f
+        when (null xs) $
+          warn $ f ++ " did not match any font files."
+        return xs
   let mkFontEntry f = mkEntry (takeFileName f) `fmap` B.readFile f
-  fontEntries <- mapM mkFontEntry $ writerEpubFonts opts'
+  fontFiles <- concat <$> mapM matchingGlob (writerEpubFonts opts')
+  fontEntries <- mapM mkFontEntry fontFiles
 
   -- set page progression direction attribution
   let progressionDirection = case epubPageDirection metadata of
@@ -488,6 +498,9 @@ writeEPUB opts doc@(Pandoc meta _) = do
                                    []   -> "UNTITLED"
                                    (x:_) -> titleText x
                         x  -> stringify x
+
+  let tocTitle = fromMaybe plainTitle $
+                   metaValueToString <$> lookupMeta "toc-title" meta
   let uuid = case epubIdentifier metadata of
                   (x:_) -> identifierText x  -- use first identifier as UUID
                   []    -> error "epubIdentifier is null"  -- shouldn't happen
@@ -521,7 +534,7 @@ writeEPUB opts doc@(Pandoc meta _) = do
               case epubCoverImage metadata of
                     Nothing -> []
                     Just _ -> [ unode "itemref" !
-                                [("idref", "cover_xhtml"),("linear","no")] $ () ]
+                                [("idref", "cover_xhtml")] $ () ]
               ++ ((unode "itemref" ! [("idref", "title_page_xhtml")
                                      ,("linear",
                                          case lookupMeta "title" meta of
@@ -532,7 +545,7 @@ writeEPUB opts doc@(Pandoc meta _) = do
                   map chapterRefNode chapterEntries)
           , unode "guide" $
              [ unode "reference" !
-                   [("type","toc"),("title",plainTitle),
+                   [("type","toc"),("title", tocTitle),
                     ("href","nav.xhtml")] $ ()
              ] ++
              [ unode "reference" !
@@ -613,7 +626,7 @@ writeEPUB opts doc@(Pandoc meta _) = do
   let navBlocks = [RawBlock (Format "html") $ ppElement $
                    unode navtag ! ([("epub:type","toc") | epub3] ++
                                    [("id","toc")]) $
-                    [ unode "h1" ! [("id","toc-title")] $ plainTitle
+                    [ unode "h1" ! [("id","toc-title")] $ tocTitle
                     , unode "ol" ! [("class","toc")] $ evalState (mapM (navPointNode navXhtmlFormatter) secs) 1]]
   let landmarks = if epub3
                      then [RawBlock (Format "html") $ ppElement $

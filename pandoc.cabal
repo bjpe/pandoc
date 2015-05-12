@@ -1,10 +1,10 @@
 Name:            pandoc
-Version:         1.13.3
+Version:         1.14
 Cabal-Version:   >= 1.10
 Build-Type:      Custom
 License:         GPL
 License-File:    COPYING
-Copyright:       (c) 2006-2014 John MacFarlane
+Copyright:       (c) 2006-2015 John MacFarlane
 Author:          John MacFarlane <jgm@berkeley.edu>
 Maintainer:      John MacFarlane <jgm@berkeley.edu>
 Bug-Reports:     https://github.com/jgm/pandoc/issues
@@ -94,6 +94,31 @@ Extra-Source-Files:
                  -- generated man pages (produced post-build)
                  man/man1/pandoc.1
                  man/man5/pandoc_markdown.5
+                 -- source files for reference.docx
+                 data/docx/[Content_Types].xml
+                 data/docx/_rels/.rels
+                 data/docx/docProps/app.xml
+                 data/docx/docProps/core.xml
+                 data/docx/word/document.xml
+                 data/docx/word/fontTable.xml
+                 data/docx/word/footnotes.xml
+                 data/docx/word/numbering.xml
+                 data/docx/word/settings.xml
+                 data/docx/word/webSettings.xml
+                 data/docx/word/styles.xml
+                 data/docx/word/_rels/document.xml.rels
+                 data/docx/word/_rels/footnotes.xml.rels
+                 data/docx/word/theme/theme1.xml
+                 -- source files for reference.odt
+                 data/odt/mimetype
+                 data/odt/manifest.rdf
+                 data/odt/styles.xml
+                 data/odt/content.xml
+                 data/odt/meta.xml
+                 data/odt/settings.xml
+                 data/odt/Configurations2/accelerator/current.xml
+                 data/odt/Thumbnails/thumbnail.png
+                 data/odt/META-INF/manifest.xml
                  -- trypandoc
                  trypandoc/Makefile
                  trypandoc/index.html
@@ -107,6 +132,9 @@ Extra-Source-Files:
                  tests/insert
                  tests/lalune.jpg
                  tests/movie.jpg
+                 tests/media/rId25.jpg
+                 tests/media/rId26.jpg
+                 tests/media/rId27.jpg
                  tests/latex-reader.latex
                  tests/textile-reader.textile
                  tests/markdown-reader-more.txt
@@ -203,10 +231,6 @@ Flag https
   Description:   Enable support for downloading of resources over https.
   Default:       True
 
-Flag make-pandoc-man-pages
-  Description:   Build program to regenerate pandoc man pages from README.
-  Default:       False
-
 Flag network-uri
   Description:   Get Network.URI from the network-uri package
   Default:       True
@@ -223,14 +247,14 @@ Library
                  array >= 0.3 && < 0.6,
                  parsec >= 3.1 && < 3.2,
                  mtl >= 1.1 && < 2.3,
-                 filepath >= 1.1 && < 1.4,
+                 filepath >= 1.1 && < 1.5,
                  process >= 1 && < 1.3,
                  directory >= 1 && < 1.3,
                  bytestring >= 0.9 && < 0.11,
                  text >= 0.11 && < 1.3,
                  zip-archive >= 0.2.3.4 && < 0.3,
                  HTTP >= 4000.0.5 && < 4000.3,
-                 texmath >= 0.8.0.1 && < 0.9,
+                 texmath >= 0.8.1 && < 0.9,
                  xml >= 1.3.12 && < 1.4,
                  random >= 1 && < 1.2,
                  extensible-exceptions >= 0.1 && < 0.2,
@@ -238,12 +262,13 @@ Library
                  aeson >= 0.7 && < 0.9,
                  tagsoup >= 0.13.1 && < 0.14,
                  base64-bytestring >= 0.1 && < 1.1,
-                 zlib >= 0.5 && < 0.6,
-                 highlighting-kate >= 0.5.11.1 && < 0.6,
+                 zlib >= 0.5 && < 0.7,
+                 highlighting-kate >= 0.5.14 && < 0.6,
                  data-default >= 0.4 && < 0.6,
                  temporary >= 1.1 && < 1.3,
-                 blaze-html >= 0.5 && < 0.8,
-                 blaze-markup >= 0.5.1 && < 0.7,
+                 blaze-html >= 0.5 && < 0.9,
+                 blaze-markup >= 0.5.1 && < 0.8,
+                 css-text >= 0.1.2 && < 0.3,
                  yaml >= 0.8.8.2 && < 0.9,
                  scientific >= 0.2 && < 0.4,
                  vector >= 0.10 && < 0.11,
@@ -253,7 +278,9 @@ Library
                  haddock-library >= 1.1 && < 1.3,
                  old-time,
                  deepseq-generics >= 0.1 && < 0.2,
-                 JuicyPixels >= 3.1.6.1 && < 3.3
+                 JuicyPixels >= 3.1.6.1 && < 3.3,
+                 filemanip >= 0.3 && < 0.4,
+                 cmark >= 0.3.1 && < 0.4
   if flag(old-locale)
      Build-Depends: old-locale >= 1 && < 1.1,
                     time >= 1.2 && < 1.5
@@ -275,7 +302,7 @@ Library
   if os(windows)
     Cpp-options:      -D_WINDOWS
   Ghc-Options:   -rtsopts -Wall -fno-warn-unused-do-bind
-  Ghc-Prof-Options: -auto-all -caf-all -rtsopts
+  Ghc-Prof-Options: -fprof-auto-exported -rtsopts
   Default-Language: Haskell98
   Other-Extensions:   PatternGuards, OverloadedStrings,
                       ScopedTypeVariables, GeneralizedNewtypeDeriving,
@@ -288,9 +315,11 @@ Library
                    Text.Pandoc.Pretty,
                    Text.Pandoc.Shared,
                    Text.Pandoc.MediaBag,
+                   Text.Pandoc.Error,
                    Text.Pandoc.Readers.HTML,
                    Text.Pandoc.Readers.LaTeX,
                    Text.Pandoc.Readers.Markdown,
+                   Text.Pandoc.Readers.CommonMark,
                    Text.Pandoc.Readers.MediaWiki,
                    Text.Pandoc.Readers.RST,
                    Text.Pandoc.Readers.Org,
@@ -314,6 +343,7 @@ Library
                    Text.Pandoc.Writers.Texinfo,
                    Text.Pandoc.Writers.Man,
                    Text.Pandoc.Writers.Markdown,
+                   Text.Pandoc.Writers.CommonMark,
                    Text.Pandoc.Writers.Haddock,
                    Text.Pandoc.Writers.RST,
                    Text.Pandoc.Writers.Org,
@@ -337,7 +367,9 @@ Library
   Other-Modules:   Text.Pandoc.Readers.Docx.Lists,
                    Text.Pandoc.Readers.Docx.Reducible,
                    Text.Pandoc.Readers.Docx.Parse,
-                   Text.Pandoc.Readers.Docx.Fonts
+                   Text.Pandoc.Readers.Docx.Fonts,
+                   Text.Pandoc.Readers.Docx.Util,
+                   Text.Pandoc.Readers.Docx.StyleMap
                    Text.Pandoc.Writers.Shared,
                    Text.Pandoc.Asciify,
                    Text.Pandoc.MIME,
@@ -360,11 +392,11 @@ Executable pandoc
                  pandoc-types >= 1.12.4 && < 1.13,
                  base >= 4.2 && <5,
                  directory >= 1 && < 1.3,
-                 filepath >= 1.1 && < 1.4,
+                 filepath >= 1.1 && < 1.5,
                  text >= 0.11 && < 1.3,
                  bytestring >= 0.9 && < 0.11,
                  extensible-exceptions >= 0.1 && < 0.2,
-                 highlighting-kate >= 0.5.11.1 && < 0.6,
+                 highlighting-kate >= 0.5.14 && < 0.6,
                  aeson >= 0.7.0.5 && < 0.9,
                  yaml >= 0.8.8.2 && < 0.9,
                  containers >= 0.1 && < 0.6,
@@ -374,7 +406,7 @@ Executable pandoc
   else
      Build-Depends: network >= 2 && < 2.6
   Ghc-Options:   -rtsopts -with-rtsopts=-K16m -Wall -fno-warn-unused-do-bind
-  Ghc-Prof-Options: -auto-all -caf-all -rtsopts -with-rtsopts=-K16m
+  Ghc-Prof-Options: -fprof-auto-exported -rtsopts -with-rtsopts=-K16m
   if os(windows)
     Cpp-options:      -D_WINDOWS
   Default-Language: Haskell98
@@ -404,14 +436,20 @@ Executable make-pandoc-man-pages
   Build-Depends: pandoc,
                  base >= 4.2 && < 5,
                  directory >= 1 && < 1.3,
-                 filepath >= 1.1 && < 1.4,
+                 filepath >= 1.1 && < 1.5,
                  old-time >= 1.0 && < 1.2,
                  time >= 1.2 && < 1.6
   Default-Language: Haskell98
-  if flag(make-pandoc-man-pages)
-    Buildable:   True
-  else
-    Buildable:   False
+  Buildable:   True
+
+Executable make-reference-files
+  Main-Is:       make-reference-files.hs
+  Hs-Source-Dirs: data
+  Build-Depends: zip-archive >= 0.2.3.4 && < 0.3,
+                 base >= 4.2 && < 5,
+                 directory >= 1 && < 1.3,
+                 bytestring >= 0.9 && < 0.11
+  Default-Language: Haskell2010
 
 Test-Suite test-pandoc
   Type:           exitcode-stdio-1.0
@@ -424,14 +462,14 @@ Test-Suite test-pandoc
                   bytestring >= 0.9 && < 0.11,
                   text >= 0.11 && < 1.3,
                   directory >= 1 && < 1.3,
-                  filepath >= 1.1 && < 1.4,
+                  filepath >= 1.1 && < 1.5,
                   process >= 1 && < 1.3,
-                  highlighting-kate >= 0.5.11.1 && < 0.6,
+                  highlighting-kate >= 0.5.14 && < 0.6,
                   Diff >= 0.2 && < 0.4,
                   test-framework >= 0.3 && < 0.9,
                   test-framework-hunit >= 0.2 && < 0.4,
                   test-framework-quickcheck2 >= 0.2.9 && < 0.4,
-                  QuickCheck >= 2.4 && < 2.8,
+                  QuickCheck >= 2.4 && < 2.9,
                   HUnit >= 1.2 && < 1.3,
                   containers >= 0.1 && < 0.6,
                   ansi-terminal >= 0.5 && < 0.7,
@@ -457,6 +495,8 @@ Test-Suite test-pandoc
                   Tests.Writers.Plain
                   Tests.Writers.AsciiDoc
                   Tests.Writers.LaTeX
+                  Tests.Writers.Docx
+                  Tests.Writers.RST
   Ghc-Options:  -rtsopts -Wall -fno-warn-unused-do-bind -threaded
   Default-Language: Haskell98
 
@@ -467,6 +507,6 @@ benchmark benchmark-pandoc
   Build-Depends:   pandoc,
                    base >= 4.2 && < 5,
                    syb >= 0.1 && < 0.5,
-                   criterion >= 0.5 && < 0.9
+                   criterion >= 0.5 && < 1.1
   Ghc-Options:   -rtsopts -Wall -fno-warn-unused-do-bind
   Default-Language: Haskell98

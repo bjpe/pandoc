@@ -8,9 +8,13 @@ import Text.Pandoc.Builder
 import Text.Pandoc
 import Data.List (intersperse)
 import Data.Monoid (mempty, mappend, mconcat)
+import Text.Pandoc.Error
 
 org :: String -> Pandoc
-org = readOrg def
+org = handleError . readOrg def
+
+orgSmart :: String -> Pandoc
+orgSmart = handleError . readOrg def { readerSmart = True }
 
 infix 4 =:
 (=:) :: ToString c
@@ -211,6 +215,10 @@ tests =
       , "Image link" =:
           "[[sunset.png][dusk.svg]]" =?>
           (para $ link "sunset.png" "" (image "dusk.svg" "" ""))
+
+      , "Image link with non-image target" =:
+          "[[http://example.com][logo.png]]" =?>
+          (para $ link "http://example.com" "" (image "logo.png" "" ""))
 
       , "Plain link" =:
           "Posts on http://zeitlens.com/ can be funny at times." =?>
@@ -1151,5 +1159,26 @@ tests =
                         , ("rundoc-city", "Zürich")
                         ]
           in codeBlockWith ( "", classes, params) "code body\n"
+      ]
+    , testGroup "Smart punctuation"
+      [ test orgSmart "quote before ellipses"
+        ("'...hi'"
+         =?> para (singleQuoted "…hi"))
+        
+      , test orgSmart "apostrophe before emph"
+        ("D'oh! A l'/aide/!"
+         =?> para ("D’oh! A l’" <> emph "aide" <> "!"))
+        
+      , test orgSmart "apostrophe in French"
+        ("À l'arrivée de la guerre, le thème de l'«impossibilité du socialisme»"
+         =?> para "À l’arrivée de la guerre, le thème de l’«impossibilité du socialisme»")
+        
+      , test orgSmart "Quotes cannot occur at the end of emphasized text"
+        ("/say \"yes\"/" =?>
+         para ("/say" <> space <> doubleQuoted "yes" <> "/"))
+        
+      , test orgSmart "Dashes are allowed at the borders of emphasis'"
+        ("/foo---/" =?>
+         para (emph "foo—"))
       ]
   ]

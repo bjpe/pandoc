@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings, CPP, ViewPatterns, ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-deprecations #-}
 {-
-Copyright (C) 2006-2014 John MacFarlane <jgm@berkeley.edu>
+Copyright (C) 2006-2015 John MacFarlane <jgm@berkeley.edu>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 {- |
    Module      : Text.Pandoc.Writers.HTML
-   Copyright   : Copyright (C) 2006-2014 John MacFarlane
+   Copyright   : Copyright (C) 2006-2015 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -46,7 +46,7 @@ import Numeric ( showHex )
 import Data.Char ( ord, toLower )
 import Data.List ( isPrefixOf, intersperse )
 import Data.String ( fromString )
-import Data.Maybe ( catMaybes, fromMaybe )
+import Data.Maybe ( catMaybes, fromMaybe, isJust )
 import Control.Monad.State
 import Text.Blaze.Html hiding(contents)
 #if MIN_VERSION_blaze_markup(0,6,3)
@@ -446,19 +446,25 @@ blockToHtml opts (Para lst) = do
   contents <- inlineListToHtml opts lst
   return $ H.p contents
 blockToHtml opts (Div attr@(_,classes,_) bs) = do
-  contents <- blockListToHtml opts bs
+  let speakerNotes = "notes" `elem` classes
+  -- we don't want incremental output inside speaker notes, see #1394
+  let opts' = if speakerNotes then opts{ writerIncremental = False } else opts
+  contents <- blockListToHtml opts' bs
   let contents' = nl opts >> contents >> nl opts
   return $
-     if "notes" `elem` classes
-        then let opts' = opts{ writerIncremental = False } in
-             -- we don't want incremental output inside speaker notes
-             case writerSlideVariant opts of
+     if speakerNotes
+        then case writerSlideVariant opts of
                   RevealJsSlides -> addAttrs opts' attr $ H5.aside $ contents'
                   NoSlides       -> addAttrs opts' attr $ H.div $ contents'
                   _              -> mempty
         else addAttrs opts attr $ H.div $ contents'
-blockToHtml _ (RawBlock f str)
+blockToHtml opts (RawBlock f str)
   | f == Format "html" = return $ preEscapedString str
+  | f == Format "latex" =
+      case writerHTMLMathMethod opts of
+           MathJax _  -> do modify (\st -> st{ stMath = True })
+                            return $ toHtml str
+           _          -> return mempty
   | otherwise          = return mempty
 blockToHtml opts (HorizontalRule) = return $ if writerHtml5 opts then H5.hr else H.hr
 blockToHtml opts (CodeBlock (id',classes,keyvals) rawCode) = do
@@ -656,7 +662,8 @@ inlineToHtml opts inline =
   case inline of
     (Str str)        -> return $ strToHtml str
     (Space)          -> return $ strToHtml " "
-    (LineBreak)      -> return $ if writerHtml5 opts then H5.br else H.br
+    (LineBreak)      -> return $ (if writerHtml5 opts then H5.br else H.br)
+                                 <> strToHtml "\n"
     (Span (id',classes,kvs) ils)
                      -> inlineListToHtml opts ils >>=
                            return . addAttrs opts attr' . H.span
@@ -768,6 +775,8 @@ inlineToHtml opts inline =
                           case writerHTMLMathMethod opts of
                                LaTeXMathML _ -> do modify (\st -> st {stMath = True})
                                                    return $ toHtml str
+                               MathJax _     -> do modify (\st -> st {stMath = True})
+                                                   return $ toHtml str
                                _             -> return mempty
       | f == Format "html" -> return $ preEscapedString str
       | otherwise          -> return mempty
@@ -816,7 +825,9 @@ inlineToHtml opts inline =
                                          writerIdentifierPrefix opts ++ "fn" ++ ref)
                                        ! A.class_ "footnoteRef"
                                        ! prefixedId opts ("fnref" ++ ref)
-                                       $ H.sup
+                                       $ (if isJust (writerEpubVersion opts)
+                                             then id
+                                             else H.sup)
                                        $ toHtml ref
                         return $ case writerEpubVersion opts of
                                       Just EPUB3 -> link ! customAttribute "epub:type" "noteref"
